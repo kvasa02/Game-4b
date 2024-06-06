@@ -18,7 +18,7 @@ let config = {
         }
     },
     width: 2300,
-    height: 1300,
+    height: 700,
     scene: [Load, Platformer, GameOver, level2]
     
 }

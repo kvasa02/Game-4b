@@ -9,20 +9,20 @@ class GameOver extends Phaser.Scene {
 
     create() {
         // Display game over text
-        this.add.text(700, 700, 'Level 2', {
+        this.add.text(700, 100, 'Level 2', {
             fontSize: '64px',
             fill: "#4B0082"
         }).setOrigin(0.5);
 
         // Display final score
-        this.add.text(700, 900, 'Score: ' + this.finalScore, {
+        this.add.text(700, 300, 'Score: ' + this.finalScore, {
             fontSize: '32px',
             fill: "#4B0082"
 
         }).setOrigin(0.5);
 
         // Add a restart button
-        const restartButton = this.add.text(700, 1000, 'continue', {
+        const restartButton = this.add.text(700, 500, 'continue', {
             fontSize: '32px',
             fill: "#4B0082"
         }).setOrigin(0.5).setInteractive();
