@@ -32,6 +32,7 @@ class level3 extends Phaser.Scene {
         this.snowmanProjectiles = null;
         this.snowmanHealth = {};
         this.SNOWMAN_HEALTH = 2;
+        this.playerHealth = 3;
     }
 
     preload() {
@@ -43,8 +44,6 @@ class level3 extends Phaser.Scene {
         this.load.audio('backgroundSound', 'assets/computerNoise_003.ogg');
         this.load.audio('jumpingSound', 'assets/impactPlank_medium_002.ogg');
         this.load.audio('gameOverSound', 'assets/powerUp11.ogg');
-        this.load.image('bullet', 'assets/bullet.webp'); // Load player's bullet asset
-        this.load.image('laser', 'assets/laser.png'); 
     }
 
     create() {
@@ -152,36 +151,38 @@ class level3 extends Phaser.Scene {
         this.createHealthIcons();
 
         // Add background sound
-        this.backgroundSound = this.sound.add('backgroundSound');
-        this.backgroundSound.play({ loop: true });
-
+        
         // Create projectile groups
         this.playerProjectiles = this.physics.add.group({
-            defaultKey: 'bullet',  // Use bullet.webp for player projectiles
+            defaultKey: 'star_07',  // Use star_07.png for player projectiles
             maxSize: 10,
         });
-    
+
         this.snowmanProjectiles = this.physics.add.group({
-            defaultKey: 'laser',  // Use laser.png for snowman projectiles
+            defaultKey: 'projectile',
             maxSize: 10,
         });
-    
+
         // Handle projectile collisions
         this.physics.add.collider(this.playerProjectiles, this.snowmanGroup, this.handlePlayerProjectileCollision, null, this);
         this.physics.add.collider(this.snowmanProjectiles, my.sprite.player, this.handleSnowmanProjectileCollision, null, this);
-    
+
         // Set up snowman shooting projectiles
         this.time.addEvent({
-            delay: 2000, // Adjust delay as needed (in milliseconds)
+            delay: 2000,
             callback: this.snowmenShoot,
             callbackScope: this,
             loop: true
         });
-    
+
         // Player shoot with spacebar
         this.input.keyboard.on('keydown-SPACE', this.playerShoot, this);
+        this.detectPlayerProximity();
+
+        this.physics.add.overlap(my.sprite.player, this.snowmanGroup, (player, snowman) => {
+            this.handleSnowmanCollision(player, snowman);
+        });
     }
-    
 
     update() {
         if (cursors.left.isDown) {
@@ -237,7 +238,13 @@ class level3 extends Phaser.Scene {
 
         this.physics.overlap(my.sprite.player, this.groundLayer, this.handlePlayerCollision, null, this);
 
+        this.physics.add.overlap(my.sprite.player, this.snowmanGroup, (player, snowman) => {
+            this.handleSnowmanCollision(player, snowman);
+        });
+        
+
         this.updateHealthIcons();
+        this.detectPlayerProximity();
     }
 
     createHealthIcons() {
@@ -255,9 +262,9 @@ class level3 extends Phaser.Scene {
     }
 
     updateHealthIcons() {
-        const heartY = this.cameras.main.scrollY + this.cameras.main.height - 25; // Fixed Y position at the bottom of the screen
-        const heartX = this.cameras.main.scrollX + 20; // Adjust X position to start a bit from the left
-     
+        const heartY = this.cameras.main.scrollY + this.cameras.main.height - 25;
+        const heartX = this.cameras.main.scrollX + 20;
+    
         for (let i = 0; i < this.maxHeartHealth; i++) {
             if (i < this.playerHealth) {
                 this.healthIcons[i].setVisible(true);
@@ -267,54 +274,59 @@ class level3 extends Phaser.Scene {
                 this.healthIcons[i].setVisible(false);
             }
         }
-
+    
         this.scoreText.setText('Score: ' + this.score);
         this.scoreText.x = heartX + 10;
         this.scoreText.y = heartY - 30;
-
+    
         if (this.playerHealth <= 0 && !this.isGameOver) {
             this.gameOver();
         }
     }
+    
 
     handlePlayerCollision(player, tile) {
         if (this.isGameOver) {
-            return; 
+            return; // Do nothing if game is over
         }
 
-        if (tile.index === 28) {
-            this.collectKey(player, tile);
-        } else if (tile.index === 34 || tile.index === 54) {
-            if (!this.collisionHandled) {
-                this.time.delayedCall(1000, () => {
-                    this.collisionHandled = false;
-                }, [], this);
-                this.collisionHandled = true;
-                this.playerHealth--;
-                this.updateHealthIcons();
-            }
-        } else if (tile.index === 112 || tile.index === 132) {
-            this.map.removeTileAt(tile.x, tile.y, this.groundLayer);
-            this.completedLevel();
-        } else if (tile.index === 68) {
-            this.collectCoin(player, tile);
-        } else if (tile.index === 146) {
-            if (!this.collisionHandled) {
-                this.time.delayedCall(2000, () => {
-                    this.collisionHandled = false;
-                }, [], this);
-                this.collisionHandled = true;
-                this.playerHealth--;
-                this.updateHealthIcons();
-            }
+        // Handle different types of collisions
+        switch (tile.index) {
+            case 28: // Key tile
+                this.collectKey(player, tile);
+                break;
+            case 34: // Water tile
+            case 54: // Snowman tile (assuming snowman tile index)
+                if (!this.collisionHandled) {
+                    this.collisionHandled = true;
+                    this.time.delayedCall(this.collisionCooldown, () => {
+                        this.collisionHandled = false;
+                    }, [], this);
+                    this.playerHealth--;
+                    this.updateHealthIcons();
+                }
+                break;
+            case 112: // Completed level tile
+            case 132: // Another completed level tile (assuming level completion tile index)
+                this.map.removeTileAt(tile.x, tile.y, this.groundLayer);
+                this.completedLevel();
+                break;
+            case 68: // Coin tile (assuming coin tile index)
+            case 146: // Another tile type (assuming another tile index)
+                this.collectCoin(player, tile);
+                break;
+            default:
+                break;
         }
     }
 
     collectKey(player, key) {
+        // Play sound and update score when collecting keys
         this.explosionSound = this.sound.add('coinSound');
         this.explosionSound.play();
         key.destroy();
-        // Additional logic related to collecting keys goes here
+        this.score += 10; // Increase score by 10 when collecting a key
+        this.scoreText.setText('Score: ' + this.score);
     }
 
     completedLevel() {
@@ -404,5 +416,51 @@ class level3 extends Phaser.Scene {
             this.gameOver();
         }
     }
+    detectPlayerProximity() {
+        const playerPosition = my.sprite.player.body.position;
+
+        this.snowmanGroup.children.iterate((snowman) => {
+            const snowmanPosition = snowman.body.position;
+            const distance = Phaser.Math.Distance.Between(playerPosition.x, playerPosition.y, snowmanPosition.x, snowmanPosition.y);
+
+            // Define the proximity distance threshold (adjust as needed)
+            const proximityThreshold = 300;
+
+            if (distance < proximityThreshold) {
+                // Snowman is close enough to player, make it shoot projectiles
+                this.snowmanShoot(snowman);
+            }
+        });
+    }
+
+    snowmanShoot(snowman) {
+        if (this.snowmanProjectiles.getLength() < this.snowmanProjectiles.maxSize) {
+            const projectile = this.snowmanProjectiles.create(snowman.x, snowman.y, 'projectile');
+            projectile.setScale(0.5);
+            projectile.setVelocityX(-500); // Example velocity for snowman projectile
+        }
+    }
+
+    handleSnowmanCollision(player, snowman) {
+        if (!this.collisionHandled) {
+            this.collisionHandled = true;
+    
+            // Add a cooldown to prevent rapid health deduction
+            this.time.delayedCall(this.collisionCooldown, () => {
+                this.collisionHandled = false;
+            }, [], this);
+    
+            // Deduct player health
+            this.playerHealth--;
+            this.updateHealthIcons();
+    
+            // Check if player still has health
+            if (this.playerHealth > 0) {
+                // Destroy the snowman
+                snowman.destroy();
+            }
+        }
+    }    
+    
 }
 

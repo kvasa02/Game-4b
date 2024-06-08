@@ -62,7 +62,7 @@ class Load extends Phaser.Scene {
 
 
         // Transition to the platformer scene after assets are loaded
-        this.scene.start("platformerScene");
+        this.scene.start("BeginScene");
     }
 
     // Update method is not needed here since the scene transitions to the next one
