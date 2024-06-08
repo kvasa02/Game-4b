@@ -68,7 +68,8 @@ class Platformer extends Phaser.Scene {
 
         // Handle collision detection with flag
         this.physics.add.overlap(my.sprite.player, this.flag, (player, flag) => {
-            this.scene.start("gameOverScene", { score: this.score });
+            this.scene.pause("PlatformerScene");
+            this.scene.start("ContinueScene", { score: this.score });
         });
 
         // Set up Phaser-provided cursor key input
