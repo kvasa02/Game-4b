@@ -3,7 +3,7 @@ class level3 extends Phaser.Scene {
         super("level3Scene");
     }
 
-    init() {
+    init(data) {
         // variables and settings
         this.ACCELERATION = 400;
         this.DRAG = 700;    // DRAG < ACCELERATION = icy slide
@@ -11,7 +11,7 @@ class level3 extends Phaser.Scene {
         this.JUMP_VELOCITY = -700;
         this.DOUBLE_JUMP_VELOCITY = -1200;
 
-        this.score = 0; 
+        this.score = data.Score; 
         this.newCameraX = 0;
         this.newCameraY = 0;
         this.heartSpacing = 40; 
@@ -27,23 +27,20 @@ class level3 extends Phaser.Scene {
         this.PARTICLE_VELOCITY = 50;
         this.hasDoubleJumped = false;
         this.hasPlayedJumpSound = false;
-        
-        this.playerProjectiles = null;
-        this.snowmanProjectiles = null;
-        this.snowmanHealth = {};
-        this.SNOWMAN_HEALTH = 2;
-        this.playerHealth = 3;
     }
 
     preload() {
         // Load heart image
         this.load.image('heart', 'assets/tile_heart.png');
-        this.load.image('projectile', 'assets/projectile.png');
-        this.load.image('star_07', 'assets/kenny-particles/star_07.png'); // Ensure this is the correct path to star_07.png
+        this.load.image('laser', 'assets/laser.png');  // Preload the laser image
         this.load.audio('coinSound', 'assets/impactMetal_medium_004.ogg');
         this.load.audio('backgroundSound', 'assets/computerNoise_003.ogg');
         this.load.audio('jumpingSound', 'assets/impactPlank_medium_002.ogg');
         this.load.audio('gameOverSound', 'assets/powerUp11.ogg');
+        this.load.spritesheet('bullet', 'assets/bullet.webp', {
+            frameWidth: 16,
+            frameHeight: 16
+        });
     }
 
     create() {
@@ -62,54 +59,68 @@ class level3 extends Phaser.Scene {
         this.groundLayer.setScale(0.5);
 
         // Make it collidable
-        this.groundLayer.setCollisionByProperty({ collides: true });
+        this.groundLayer.setCollisionByProperty({
+            collides: true
+        });
 
-        // Create key objects
-        this.keys = this.map.createFromObjects("Objects", {
+        this.backgroundSound = this.sound.add('backgroundSound', {
+            loop: true,
+            volume: 0.1
+        });
+        this.backgroundSound.play();
+
+        this.key = this.map.createFromObjects("Objects", {
             name: "key",
             key: "tilemap_sheet",
             frame: 27
         });
-        this.physics.world.enable(this.keys, Phaser.Physics.Arcade.STATIC_BODY);
+        this.physics.world.enable(this.key, Phaser.Physics.Arcade.STATIC_BODY);
 
-        // Create a Phaser group out of the array this.keys
-        this.keyGroup = this.add.group(this.keys);
+        this.keyGroup = this.add.group(this.key);
 
-        // Create snowman objects
-        this.snowmen = this.map.createFromObjects("Objects", {
+        this.snowman = this.map.createFromObjects("Objects", {
             name: "snowman",
             key: "tilemap_sheet",
-            frame: 145  // Assuming 147 is the frame index for snowman
+            frame: 145
         });
-        this.physics.world.enable(this.snowmen, Phaser.Physics.Arcade.STATIC_BODY);
+        this.physics.world.enable(this.snowman, Phaser.Physics.Arcade.STATIC_BODY);
 
-        // Create a Phaser group out of the array this.snowmen
-        this.snowmanGroup = this.add.group(this.snowmen);
-        this.snowmanGroup.children.iterate((snowman) => {
-            this.snowmanHealth[snowman.id] = this.SNOWMAN_HEALTH; // Set initial health for each snowman
-        });
+        this.snowmanGroup = this.add.group(this.snowman);
 
-        // Set up player avatar
         my.sprite.player = this.physics.add.sprite(10, game.config.height - 10, "platformer_characters", "tile_0001.png").setScale(SCALE);
         my.sprite.player.setCollideWorldBounds(true);
 
-        // Enable collision handling
         this.physics.add.collider(my.sprite.player, this.groundLayer);
 
-        // Handle collision detection with keys
-        this.physics.add.overlap(my.sprite.player, this.keyGroup, (player, key) => {
-            this.collectKey(player, key);
+        this.physics.add.overlap(my.sprite.player, this.keyGroup, (obj1, obj2) => {
+            this.collectCoin(my.sprite.player, this.tile);
+            obj2.destroy(); 
         });
 
-        // Handle collision detection with snowmen
-        this.physics.add.overlap(my.sprite.player, this.snowmanGroup, (player, snowman) => {
-            this.handleSnowmanCollision(player, snowman);
+        // Add overlap check for player and snowman
+        this.physics.add.overlap(my.sprite.player, this.snowmanGroup, this.handleSnowmanCollision, null, this);
+
+        // Add a group for lasers
+        this.lasers = this.physics.add.group({
+            defaultKey: 'laser',
+            maxSize: 30
+        });
+
+        // Shoot lasers from snowmen periodically
+        this.time.addEvent({
+            delay: 2000, // 2000 milliseconds = 2 seconds
+            callback: this.shootLaser,
+            callbackScope: this,
+            loop: true
         });
 
         const mapWidth = this.map.widthInPixels;
         const mapHeight = this.map.heightInPixels;
 
         this.physics.world.setBounds(0, 0, mapWidth, mapHeight);
+
+        // Enable collision handling
+        this.physics.add.collider(my.sprite.player, this.groundLayer);
 
         // Set up Phaser-provided cursor key input
         cursors = this.input.keyboard.createCursorKeys();
@@ -128,16 +139,16 @@ class level3 extends Phaser.Scene {
 
         my.vfx.walking = this.add.particles(0, 0, "kenny-particles", {
             frame: ['scratch_01.png', 'scratch_01.png'],
-            scale: { start: 0.04, end: 0.1 },
+            scale: {start: 0.04, end: 0.1},
             lifespan: 200,
-            alpha: { start: 1, end: 0.1 }, 
+            alpha: {start: 1, end: 0.1}, 
         });
 
         my.vfx.jumping = this.add.particles(0, 0, "kenny-particles", {
             frame: ['flame_04.png', 'flame_05.png'],
-            scale: { start: 0.03, end: 0.1 },
+            scale: {start: 0.03, end: 0.1},
             lifespan: 300,
-            alpha: { start: 1, end: 0.1 }, 
+            alpha: {start: 1, end: 0.1}, 
         });
 
         my.vfx.walking.stop();
@@ -150,38 +161,30 @@ class level3 extends Phaser.Scene {
 
         this.createHealthIcons();
 
-        // Add background sound
-        
-        // Create projectile groups
-        this.playerProjectiles = this.physics.add.group({
-            defaultKey: 'star_07',  // Use star_07.png for player projectiles
-            maxSize: 10,
+        // Set up collision detection between lasers and the player
+        this.physics.add.overlap(my.sprite.player, this.lasers, this.handleLaserCollision, null, this);
+
+        this.spacebar = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+        this.bullets = this.physics.add.group({
+            defaultKey: 'bullet',
+            maxSize: 10000,
+            allowGravity: false
         });
 
-        this.snowmanProjectiles = this.physics.add.group({
-            defaultKey: 'projectile',
-            maxSize: 10,
-        });
+        this.physics.add.overlap(my.sprite.player, this.lasers, this.handleLaserCollision, null, this);
 
-        // Handle projectile collisions
-        this.physics.add.collider(this.playerProjectiles, this.snowmanGroup, this.handlePlayerProjectileCollision, null, this);
-        this.physics.add.collider(this.snowmanProjectiles, my.sprite.player, this.handleSnowmanProjectileCollision, null, this);
-
-        // Set up snowman shooting projectiles
         this.time.addEvent({
-            delay: 2000,
-            callback: this.snowmenShoot,
+            delay: 100000, // 2000 milliseconds = 2 seconds
+            callback: this.shootLaser,
             callbackScope: this,
             loop: true
         });
 
-        // Player shoot with spacebar
-        this.input.keyboard.on('keydown-SPACE', this.playerShoot, this);
-        this.detectPlayerProximity();
+        this.physics.add.overlap(this.bullets, this.snowmanGroup, this.handleBulletSnowmanCollision, null, this);
+        this.physics.add.overlap(this.bullets, this.lasers, this.handleBulletLaserCollision, null, this);
 
-        this.physics.add.overlap(my.sprite.player, this.snowmanGroup, (player, snowman) => {
-            this.handleSnowmanCollision(player, snowman);
-        });
+
     }
 
     update() {
@@ -197,7 +200,7 @@ class level3 extends Phaser.Scene {
 
             my.vfx.walking.stop();
             my.vfx.jumping.stop();
-            my.vfx.walking.startFollow(my.sprite.player, my.sprite.player.displayWidth / 2 - 10, my.sprite.player.displayHeight / 2 - 5, false);
+            my.vfx.walking.startFollow(my.sprite.player, my.sprite.player.displayWidth/2-10, my.sprite.player.displayHeight/2-5, false);
             this.hasPlayedJumpSound = false;
             my.vfx.walking.setParticleSpeed(this.PARTICLE_VELOCITY, 0);
             if (my.sprite.player.body.blocked.down) {
@@ -232,22 +235,62 @@ class level3 extends Phaser.Scene {
         if (!my.sprite.player.body.blocked.down) {
             my.sprite.player.anims.play('jump');
             my.vfx.jumping.start();
+
             my.vfx.jumping.startFollow(my.sprite.player, 0, 0);
             my.vfx.walking.stop();
+        }
+        if (my.sprite.player.body.blocked.down && Phaser.Input.Keyboard.JustDown(cursors.up)) {
+            my.sprite.player.body.setVelocityY(this.JUMP_VELOCITY);
         }
 
         this.physics.overlap(my.sprite.player, this.groundLayer, this.handlePlayerCollision, null, this);
 
-        this.physics.add.overlap(my.sprite.player, this.snowmanGroup, (player, snowman) => {
-            this.handleSnowmanCollision(player, snowman);
-        });
-        
-
         this.updateHealthIcons();
-        this.detectPlayerProximity();
+
+        if (Phaser.Input.Keyboard.JustDown(this.spacebar)) {
+            this.shootBullet();
+        }
+
+
     }
 
+    
+
+    handleBulletLaserCollision(bullet, laser) {
+        bullet.destroy(); // Destroy the bullet
+        laser.destroy(); // Destroy the laser
+    }
+    
+    handleSnowmanCollision(bullet, snowman) {
+        bullet.destroy(); // Remove the bullet
+        snowman.destroy(); // Remove the snowman
+        // Play sound or handle score update if needed
+        this.explosionSound = this.sound.add('coinSound');
+        this.explosionSound.play();
+    }
+
+
+    shootBullet() {
+        const bullet = this.bullets.get(my.sprite.player.x, my.sprite.player.y);
+    
+        if (bullet) {
+            bullet.setActive(true);
+            bullet.setVisible(true);
+            bullet.body.velocity.x = 600; // Adjust bullet speed as needed
+            bullet.body.allowGravity = false; // Disable gravity for the bullet
+        }
+    }
+    
+    handleBulletSnowmanCollision(bullet, snowman) {
+        bullet.destroy(); // Destroy the bullet
+        snowman.destroy(); // Destroy the snowman
+        this.explosionSound = this.sound.add('coinSound');
+        this.explosionSound.play();
+    }
+
+
     createHealthIcons() {
+
         const heartY = this.cameras.main.scrollY + this.cameras.main.height - 25; // Fixed Y position at the bottom of the screen
         const heartXBase = this.cameras.main.scrollX + 20; 
 
@@ -257,76 +300,121 @@ class level3 extends Phaser.Scene {
             this.healthIcons.push(heart);
         }
 
-        this.scoreText = this.add.text(heartXBase + 10, heartY, 'Score : ' + this.score, { fontSize: '36px', fill: '#fff' }).setOrigin(0, 0.5);
+        this.scoreText = this.add.text(heartXBase+10, heartY, 'Score : '+ this.score, { fontSize: '36px', fill: '#fff' }).setOrigin(0,0.5);
         this.scoreText.setScale(0.7);
     }
 
     updateHealthIcons() {
-        const heartY = this.cameras.main.scrollY + this.cameras.main.height - 25;
-        const heartX = this.cameras.main.scrollX + 20;
-    
+
+        const currentTime = this.time.now; // Get the current time
+        
+        const heartY = this.cameras.main.scrollY + this.cameras.main.height - 25; // Fixed Y position at the bottom of the screen
+        const heartX = this.cameras.main.scrollX + 20; // Adjust X position to start a bit from the left
+     
         for (let i = 0; i < this.maxHeartHealth; i++) {
+
             if (i < this.playerHealth) {
-                this.healthIcons[i].setVisible(true);
-                this.healthIcons[i].x = heartX + i * (this.heartSpacing + 16);
-                this.healthIcons[i].y = heartY;
+                    this.healthIcons[i].setVisible(true);
+                    this.healthIcons[i].x = heartX + i * (this.heartSpacing + 16);
+                    this.healthIcons[i].y = heartY;
             } else {
-                this.healthIcons[i].setVisible(false);
+                    this.healthIcons[i].setVisible(false);
             }
+            
         }
-    
         this.scoreText.setText('Score: ' + this.score);
-        this.scoreText.x = heartX + 10;
-        this.scoreText.y = heartY - 30;
-    
-        if (this.playerHealth <= 0 && !this.isGameOver) {
-            this.gameOver();
+        this.scoreText.x = heartX+10;
+        this.scoreText.y = heartY-30;
+
+        if (this.playerHealth <= 0 && !this.isGameOver )
+            {
+                this.gameOver();
         }
     }
-    
+
 
     handlePlayerCollision(player, tile) {
         if (this.isGameOver) {
-            return; // Do nothing if game is over
+            return; 
         }
-
-        // Handle different types of collisions
-        switch (tile.index) {
-            case 28: // Key tile
-                this.collectKey(player, tile);
-                break;
-            case 34: // Water tile
-            case 54: // Snowman tile (assuming snowman tile index)
-                if (!this.collisionHandled) {
-                    this.collisionHandled = true;
-                    this.time.delayedCall(this.collisionCooldown, () => {
-                        this.collisionHandled = false;
-                    }, [], this);
-                    this.playerHealth--;
-                    this.updateHealthIcons();
-                }
-                break;
-            case 112: // Completed level tile
-            case 132: // Another completed level tile (assuming level completion tile index)
-                this.map.removeTileAt(tile.x, tile.y, this.groundLayer);
-                this.completedLevel();
-                break;
-            case 68: // Coin tile (assuming coin tile index)
-            case 146: // Another tile type (assuming another tile index)
-                this.collectCoin(player, tile);
-                break;
-            default:
-                break;
+        if (tile.index === 28) {
+            this.collectCoin(player, tile);
+        } else if (tile.index === 34 || tile.index === 54) {
+            if (!this.collisionHandled) {
+                this.time.delayedCall(1000, () => { // Reset the collision flag after a short delay
+                    this.collisionHandled = false;
+                }, [], this);
+                this.collisionHandled = true;
+                this.playerHealth--;
+                this.updateHealthIcons();
+            }    
+        } else if (tile.index === 112 || tile.index === 132) {
+            this.map.removeTileAt(tile.x, tile.y, this.groundLayer);
+            this.completedLevel();
+        } else if (tile.index === 68) {
+            this.explosionSound = this.sound.add('coinSound');
+            this.explosionSound.play();
+            this.map.removeTileAt(tile.x, tile.y, this.groundLayer);
+            this.playerHealth++;
+            this.updateHealthIcons();
+        } else if (tile.index === 146) {
+            if (!this.collisionHandled) {
+                this.time.delayedCall(2000, () => { // Reset the collision flag after a short delay
+                    this.collisionHandled = false;
+                }, [], this);
+                this.collisionHandled = true;
+                this.playerHealth--;
+                this.updateHealthIcons();
+            }    
         }
     }
 
-    collectKey(player, key) {
-        // Play sound and update score when collecting keys
+    handleSnowmanCollision(player, snowman) {
+        const currentTime = this.time.now;
+        if (currentTime - this.lastCollisionTime > this.collisionCooldown) {
+            this.playerHealth--;
+            this.updateHealthIcons();
+            this.lastCollisionTime = currentTime;
+
+            snowman.destroy(); // Remove the snowman from the game
+
+            if (this.playerHealth <= 0) {
+                this.gameOver();
+            }
+        }
+    }
+
+    handleLaserCollision(player, laser) {
+        laser.destroy(); // Remove the laser immediately on collision
+        this.playerHealth--; // Decrease player health
+        this.updateHealthIcons(); // Update health icons
+        
+        // Check if player health is zero and handle game over if needed
+        if (this.playerHealth <= 0) {
+            this.gameOver();
+        }
+    }
+
+    shootLaser() {
+        this.snowmanGroup.children.iterate((snowman) => {
+            if (snowman.active) {
+                const laser = this.lasers.get(snowman.x, snowman.y);
+                if (laser) {
+                    laser.setActive(true);
+                    laser.setVisible(true);
+                    laser.body.velocity.x = -200; // Set the speed of the laser
+                    laser.body.allowGravity = false; // Prevent the laser from falling
+                    laser.setScale(0.05); // Further scale down the laser sprite
+                    laser.setPosition(snowman.x, snowman.y); // Ensure laser starts from the snowman's position
+                }
+            }
+        });
+    }
+
+    collectCoin(player, tile) {
         this.explosionSound = this.sound.add('coinSound');
         this.explosionSound.play();
-        key.destroy();
-        this.score += 10; // Increase score by 10 when collecting a key
-        this.scoreText.setText('Score: ' + this.score);
+        this.score += 10; 
     }
 
     completedLevel() {
@@ -336,12 +424,13 @@ class level3 extends Phaser.Scene {
         this.explosionSound = this.sound.add('gameOverSound');
         this.explosionSound.setVolume(0.5);
         this.explosionSound.play();
+
         const message = this.add.text(messageX, messageY, 'Completed Level 1', { fontSize: '36px', fill: '#fff' });
         message.setOrigin(0.5);
 
         this.physics.pause();
 
-        this.scene.start("ContinueScene", { score: this.score });
+        this.scene.start("FinalScene", { score: this.score });
         
         this.input.keyboard.enabled = false;
 
@@ -353,11 +442,12 @@ class level3 extends Phaser.Scene {
 
         const messageX = my.sprite.player.x;
         const messageY = this.cameras.main.height - 150;
-        
+
         this.backgroundSound.stop();
         this.explosionSound = this.sound.add('gameOverSound');
         this.explosionSound.setVolume(0.5);
         this.explosionSound.play();
+
         const message = this.add.text(messageX, messageY, 'Game Over', { fontSize: '36px', fill: '#fff' });
         message.setOrigin(0.5);
 
@@ -379,88 +469,4 @@ class level3 extends Phaser.Scene {
                 this.init();
             });
     }
-
-    playerShoot() {
-        if (this.playerProjectiles.getLength() < this.playerProjectiles.maxSize) {
-            const projectile = this.playerProjectiles.create(my.sprite.player.x, my.sprite.player.y, 'star_07');
-            projectile.setScale(0.5);
-            projectile.setVelocityX(500);
-        }
-    }
-
-    snowmenShoot() {
-        this.snowmanGroup.children.iterate((snowman) => {
-            if (this.snowmanProjectiles.getLength() < this.snowmanProjectiles.maxSize) {
-                const projectile = this.snowmanProjectiles.create(snowman.x, snowman.y, 'projectile');
-                projectile.setScale(0.5);
-                projectile.setVelocityX(-500); // Example velocity for snowman projectile
-            }
-        });
-    }
-
-    handlePlayerProjectileCollision(projectile, snowman) {
-        projectile.destroy();
-        const snowmanId = snowman.id;
-        this.snowmanHealth[snowmanId]--;
-        if (this.snowmanHealth[snowmanId] <= 0) {
-            snowman.destroy();
-            // Additional logic when snowman is defeated
-        }
-    }
-
-    handleSnowmanProjectileCollision(projectile, player) {
-        projectile.destroy();
-        this.playerHealth--;
-        this.updateHealthIcons();
-        if (this.playerHealth <= 0) {
-            this.gameOver();
-        }
-    }
-    detectPlayerProximity() {
-        const playerPosition = my.sprite.player.body.position;
-
-        this.snowmanGroup.children.iterate((snowman) => {
-            const snowmanPosition = snowman.body.position;
-            const distance = Phaser.Math.Distance.Between(playerPosition.x, playerPosition.y, snowmanPosition.x, snowmanPosition.y);
-
-            // Define the proximity distance threshold (adjust as needed)
-            const proximityThreshold = 300;
-
-            if (distance < proximityThreshold) {
-                // Snowman is close enough to player, make it shoot projectiles
-                this.snowmanShoot(snowman);
-            }
-        });
-    }
-
-    snowmanShoot(snowman) {
-        if (this.snowmanProjectiles.getLength() < this.snowmanProjectiles.maxSize) {
-            const projectile = this.snowmanProjectiles.create(snowman.x, snowman.y, 'projectile');
-            projectile.setScale(0.5);
-            projectile.setVelocityX(-500); // Example velocity for snowman projectile
-        }
-    }
-
-    handleSnowmanCollision(player, snowman) {
-        if (!this.collisionHandled) {
-            this.collisionHandled = true;
-    
-            // Add a cooldown to prevent rapid health deduction
-            this.time.delayedCall(this.collisionCooldown, () => {
-                this.collisionHandled = false;
-            }, [], this);
-    
-            // Deduct player health
-            this.playerHealth--;
-            this.updateHealthIcons();
-    
-            // Check if player still has health
-            if (this.playerHealth > 0) {
-                // Destroy the snowman
-                snowman.destroy();
-            }
-        }
-    }    
-    
 }
-

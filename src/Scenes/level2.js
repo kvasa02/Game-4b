@@ -3,7 +3,7 @@ class level2 extends Phaser.Scene {
         super("level2Scene");
     }
 
-    init() {
+    init(data) {
         // variables and settings
         this.ACCELERATION = 400;
         this.DRAG = 700;    // DRAG < ACCELERATION = icy slide
@@ -11,7 +11,7 @@ class level2 extends Phaser.Scene {
         this.JUMP_VELOCITY = -700;
         this.DOUBLE_JUMP_VELOCITY = -1200;
 
-        this.score = 0; 
+        this.score = data.Score; 
         this.newCameraX=0;
         this.newCameraY=0;
         this.heartSpacing = 40; 

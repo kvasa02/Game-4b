@@ -37,7 +37,7 @@ class Continue extends Phaser.Scene {
 
         // Handle continue button click
         continueButton.on('pointerdown', () => {
-            this.scene.start('level2Scene'); // Replace 'level2Scene' with the actual scene key to continue
+            this.scene.start('level2Scene',{Score: this.finalScore});
         });
     }
 }

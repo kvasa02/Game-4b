@@ -9,17 +9,17 @@ class Transition extends Phaser.Scene {
 
     preload() {
         // Load assets needed for the continue screen
-        this.load.image('back', 'assets/back.jpeg');
+        this.load.image('b', 'assets/back.jpeg');
         this.load.image('continueButton', 'assets/next.png');
     }
 
     create() {
         // Display background image
-        const back = this.add.image(0, 0, 'back').setOrigin(0);
-        back.setScale(.9);
+        const b = this.add.image(0, 0, 'b').setOrigin(0);
+        b.setScale(.9);
 
         // Display level text
-        this.add.text(600, 350, 'Level 2', {
+        this.add.text(600, 350, 'Level 3', {
             fontSize: '64px',
             fill: '#FFFAF0'
         }).setOrigin(0.5);
@@ -37,7 +37,7 @@ class Transition extends Phaser.Scene {
 
         // Handle continue button click
         continueButton.on('pointerdown', () => {
-            this.scene.start('level3Scene'); // Replace 'level2Scene' with the actual scene key to continue
+            this.scene.start('level3Scene',{Score: this.finalScore});
         });
     }
 }

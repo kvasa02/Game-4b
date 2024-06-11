@@ -19,7 +19,7 @@ let config = {
     },
     width: 2300,
     height: 700,
-    scene: [Load, Begin, Platformer, Continue, level2, Transition, level3]
+    scene: [Load, Begin, Platformer, Continue, level2, Transition, level3, Final]
     
 }
 
